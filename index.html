@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSON Appender — дополнение и редактирование JSON</title>
+<style>
+  :root{
+    --bg:#0f1218; --panel:#171c25; --panel2:#1e2532; --border:#2a3342;
+    --text:#e6ebf2; --muted:#8b97a8; --accent:#5b8def;
+    --ok:#35c48a; --warn:#f0b429; --err:#ef5350;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; color:var(--text); line-height:1.5;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 20% -10%,#1a2233 0%,#0f1218 60%) fixed;
+  }
+  header{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:14px 24px; border-bottom:1px solid var(--border);
+    background:rgba(15,18,24,.75); backdrop-filter:blur(8px);
+    position:sticky; top:0; z-index:10;
+  }
+  h1{font-size:17px; margin:0; font-weight:600; letter-spacing:.2px}
+  h1 span{color:var(--accent)}
+  .badge{
+    font-size:12px; color:var(--muted); border:1px solid var(--border);
+    padding:3px 10px; border-radius:999px; max-width:380px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .badge.loaded{color:var(--ok); border-color:rgba(53,196,138,.35)}
+  .badge.dirty{color:var(--warn); border-color:rgba(240,180,41,.35)}
+  .spacer{flex:1}
+  main{padding:24px; max-width:1180px; margin:0 auto}
+  .panel{
+    background:linear-gradient(180deg,var(--panel) 0%,var(--panel2) 100%);
+    border:1px solid var(--border); border-radius:14px; padding:18px;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+  }
+  .panel h2{font-size:14px; margin:0 0 4px; text-transform:uppercase;
+    letter-spacing:.6px; color:var(--muted); font-weight:600}
+  .panel h3{font-size:12px; margin:0 0 8px; text-transform:uppercase;
+    letter-spacing:.6px; color:var(--muted); font-weight:600}
+  .grid{display:grid; grid-template-columns:1.15fr .85fr; gap:18px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+
+  .dropzone{
+    border:2px dashed var(--border); border-radius:14px; padding:44px 20px;
+    text-align:center; transition:.15s; cursor:pointer;
+  }
+  .dropzone:hover{border-color:#3d4a5e}
+  .dropzone.over{border-color:var(--accent); background:rgba(91,141,239,.07)}
+  .dz-icon{font-size:34px; margin-bottom:8px}
+  .dropzone p{margin:6px 0}
+
+  textarea{
+    width:100%; min-height:230px; resize:vertical;
+    background:#0b0e14; border:1px solid var(--border); border-radius:10px;
+    color:var(--text); padding:12px; outline:none; font-size:13px; line-height:1.5;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+
+  button{
+    font:inherit; font-size:14px; cursor:pointer; border-radius:9px;
+    padding:9px 16px; border:1px solid transparent; transition:.15s;
+  }
+  .primary{
+    background:linear-gradient(180deg,#6b97f0,#4f7fe0); color:#fff; font-weight:600;
+    box-shadow:0 4px 14px rgba(91,141,239,.3);
+  }
+  .primary:hover:not(:disabled){filter:brightness(1.08)}
+  .primary:disabled{opacity:.4; cursor:not-allowed; box-shadow:none}
+  .ghost{background:transparent; border-color:var(--border); color:var(--text)}
+  .ghost:hover:not(:disabled){border-color:#3d4a5e; background:rgba(255,255,255,.03)}
+  .ghost:disabled{opacity:.4; cursor:not-allowed}
+  .ghost.danger{color:#ff9b99}
+  .ghost.danger:hover:not(:disabled){background:rgba(239,83,80,.1); border-color:rgba(239,83,80,.4)}
+  .link{background:none; border:none; color:var(--accent); padding:0;
+    text-decoration:underline; font-size:inherit}
+
+  .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
+  .options{display:flex; flex-wrap:wrap; gap:14px; align-items:center;
+    font-size:13px; color:var(--muted); margin:12px 0}
+  .options label{display:flex; align-items:center; gap:6px; cursor:pointer}
+  select, .small-input{
+    background:#0b0e14; border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:6px 8px; font:inherit; font-size:13px; outline:none;
+  }
+  .small-input{width:120px}
+  input[type=checkbox]{accent-color:var(--accent); width:15px; height:15px}
+
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px}
+  .stat{background:#0b0e14; border:1px solid var(--border); border-radius:10px;
+    padding:12px 8px; text-align:center}
+  .stat span{display:block; font-size:20px; font-weight:700; color:#fff;
+    font-variant-numeric:tabular-nums}
+  .stat label{font-size:10px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.5px}
+
+  .preview{
+    background:#0b0e14; border:1px solid var(--border); border-radius:10px;
+    padding:12px; margin:0 0 4px; font-size:12px; max-height:240px; overflow:auto;
+    white-space:pre-wrap; word-break:break-word; color:#c8d3e3;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+
+  .message{
+    padding:10px 12px; border-radius:9px; font-size:13px; margin-top:12px;
+    white-space:pre-wrap; border:1px solid;
+  }
+  .message.ok{background:rgba(53,196,138,.08); border-color:rgba(53,196,138,.35); color:#8fe6bf}
+  .message.warn{background:rgba(240,180,41,.08); border-color:rgba(240,180,41,.35); color:#f5d07a}
+  .message.error{background:rgba(239,83,80,.08); border-color:rgba(239,83,80,.4); color:#ff9b99}
+
+  .muted{color:var(--muted)}
+  .small{font-size:12px}
+  .slim{padding:12px 16px; margin-bottom:16px}
+
+  /* ---- Таблица записей ---- */
+  .table-controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0}
+  .table-controls .search{flex:1; min-width:200px; max-width:400px}
+  .table-wrap{overflow:auto; border:1px solid var(--border); border-radius:10px; max-height:520px}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th, td{padding:8px 12px; text-align:left; border-bottom:1px solid var(--border);
+    white-space:nowrap; max-width:320px; overflow:hidden; text-overflow:ellipsis}
+  th{background:#0b0e14; color:var(--muted); font-weight:600;
+    font-size:11px; text-transform:uppercase; letter-spacing:.4px;
+    position:sticky; top:0; z-index:1}
+  tbody tr:hover{background:rgba(91,141,239,.06); cursor:pointer}
+  td.actions{text-align:right; padding:4px 8px}
+  td.actions button{padding:4px 9px; font-size:13px; margin-left:2px; min-width:30px}
+  .pagination{display:flex; gap:8px; align-items:center; justify-content:center;
+    margin-top:12px; font-size:13px; color:var(--muted)}
+  .pagination button{padding:5px 12px; font-size:12px}
+  .empty-state{padding:26px; text-align:center; color:var(--muted)}
+
+  /* ---- Модалка ---- */
+  .modal{
+    position:fixed; inset:0; z-index:100;
+    background:rgba(5,8,12,.72);
+    display:flex; align-items:center; justify-content:center;
+    padding:20px; backdrop-filter:blur(4px);
+  }
+  .modal[hidden]{display:none}
+  .modal-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    width:min(760px, 100%); max-height:90vh;
+    display:flex; flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+    overflow:hidden;
+  }
+  .modal-header{
+    display:flex; align-items:center; gap:10px;
+    padding:13px 18px; border-bottom:1px solid var(--border);
+    flex-shrink:0;
+  }
+  .modal-header h3{margin:0; font-size:15px; font-weight:600}
+  .modal-header h3 .muted{font-weight:400; font-size:13px}
+  .modal-body{padding:16px 18px; overflow-y:auto; flex:1; min-height:0}
+  .modal-footer{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    padding:12px 18px; border-top:1px solid var(--border); flex-shrink:0;
+  }
+  .close{
+    background:transparent; border:none; color:var(--muted); font-size:22px;
+    width:32px; height:32px; border-radius:8px; cursor:pointer; padding:0; line-height:1;
+  }
+  .close:hover{background:rgba(255,255,255,.06); color:var(--text)}
+
+  .field-row{margin-bottom:14px}
+  .field-header{display:flex; gap:6px; align-items:center; margin-bottom:4px}
+  .field-header .key-input{
+    flex:1; background:transparent; border:none; border-bottom:1px dashed var(--border);
+    color:var(--accent); padding:2px 4px; font:inherit; font-size:12px;
+    font-weight:600; letter-spacing:.3px; outline:none;
+  }
+  .field-header .key-input:focus{border-bottom-color:var(--accent)}
+  .field-header .type-badge{
+    font-size:10px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.4px; padding:2px 6px;
+    border:1px solid var(--border); border-radius:5px; flex-shrink:0;
+  }
+  .btn-remove-field{
+    background:transparent; border:1px solid var(--border); color:var(--muted);
+    width:26px; height:26px; border-radius:6px; cursor:pointer; padding:0;
+    font-size:15px; line-height:1; flex-shrink:0;
+  }
+  .btn-remove-field:hover{color:var(--err); border-color:rgba(239,83,80,.4)}
+
+  .field-row input.value-input,
+  .field-row select.value-input,
+  .field-row textarea.value-input{
+    width:100%; background:#0b0e14; border:1px solid var(--border);
+    border-radius:8px; padding:8px 10px; color:var(--text);
+    font:inherit; font-size:13px; outline:none;
+  }
+  .field-row textarea.value-input{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    min-height:80px; resize:vertical;
+  }
+  .field-row input.value-input:focus,
+  .field-row select.value-input:focus,
+  .field-row textarea.value-input:focus{
+    border-color:var(--accent);
+  }
+  .field-row input.value-input.invalid,
+  .field-row textarea.value-input.invalid{
+    border-color:var(--err);
+  }
+  .json-editor{
+    width:100%; min-height:320px; resize:vertical;
+    background:#0b0e14; border:1px solid var(--border); border-radius:10px;
+    color:var(--text); padding:12px; outline:none;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; line-height:1.5;
+  }
+  .json-editor:focus{border-color:var(--accent)}
+  .json-editor.invalid{border-color:var(--err)}
+
+  .small-btn{padding:4px 10px; font-size:12px}
+
+  footer{text-align:center; color:var(--muted); font-size:12px; padding:20px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>JSON <span>Appender</span></h1>
+  <span class="badge" id="fileBadge">файл не загружен</span>
+  <div class="spacer"></div>
+  <button id="resetBtn" class="ghost" hidden>Сбросить</button>
+</header>
+
+<main>
+  <!-- ============ Загрузка ============ -->
+  <section id="uploadSection">
+    <div class="panel">
+      <div id="dropZone" class="dropzone">
+        <input type="file" id="fileInput" accept=".json,.txt,application/json" hidden>
+        <div class="dz-icon">📄</div>
+        <p><b>Перетащите JSON-файл</b> сюда или
+          <button class="link" id="browseBtn" type="button">выберите файл</button></p>
+        <p class="muted small">Поддерживается корневой массив или объект с массивом внутри</p>
+      </div>
+      <div id="uploadMsg" class="message error" hidden></div>
+    </div>
+  </section>
+
+  <!-- ============ Работа ============ -->
+  <section id="workSection" hidden>
+    <div id="arrayPicker" class="panel slim" hidden>
+      <label class="small muted">Какой массив дополнять:&nbsp;
+        <select id="arraySelect"></select>
+      </label>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Новая запись</h2>
+        <p class="muted small" style="margin:2px 0 10px">
+          Вставьте JSON-объект или массив объектов. Ctrl+Enter — добавить.
+        </p>
+        <textarea id="recordInput" spellcheck="false" placeholder='{
+  "id": 123,
+  "name": "Пример"
+}'></textarea>
+
+        <div class="row">
+          <button id="appendBtn" class="primary">Добавить в файл</button>
+          <button id="templateBtn" class="ghost">Шаблон из последней</button>
+          <button id="clearInputBtn" class="ghost">Очистить</button>
+        </div>
+
+        <div class="options">
+          <label><input type="checkbox" id="dedupChk" checked> Проверять дубликаты по полю</label>
+          <input id="idFieldInput" class="small-input" placeholder="id / _id / uuid">
+          <label><input type="checkbox" id="structChk"> Блокировать при несовпадении структуры</label>
+        </div>
+
+        <div id="message" class="message" hidden></div>
+      </div>
+
+      <div class="panel">
+        <h2>Состояние</h2>
+        <div class="stats">
+          <div class="stat"><span id="statTotal">0</span><label>записей</label></div>
+          <div class="stat"><span id="statAdded">0</span><label>операций</label></div>
+          <div class="stat"><span id="statSize">—</span><label>размер</label></div>
+        </div>
+
+        <h3>Хвост массива (последние 3)</h3>
+        <pre id="preview" class="preview">—</pre>
+
+        <div class="options">
+          <label>Отступ:
+            <select id="indentSel">
+              <option value="2">2 пробела</option>
+              <option value="4">4 пробела</option>
+              <option value="tab">табуляция</option>
+              <option value="0">минифицированный</option>
+            </select>
+          </label>
+          <label><input type="checkbox" id="bomChk"> BOM (UTF-8)</label>
+        </div>
+
+        <div class="row">
+          <button id="downloadBtn" class="primary" disabled>Скачать результат</button>
+          <button id="undoBtn" class="ghost" disabled>Отменить последнее</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ Состав файла ============ -->
+    <div class="panel" style="margin-top:18px">
+      <h2>Состав файла</h2>
+      <p class="muted small" style="margin:2px 0 0">
+        Двойной клик по строке или кнопка ✎ — редактировать запись.
+      </p>
+
+      <div class="table-controls">
+        <input id="filterInput" class="small-input search" style="width:auto"
+               placeholder="Поиск по всем полям…">
+        <label class="small muted">Строк на странице:
+          <select id="pageSizeSel">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
+        <div class="spacer"></div>
+        <span class="muted small" id="tableCount"></span>
+      </div>
+
+      <div id="recordsTable"></div>
+      <div id="pagination" class="pagination"></div>
+    </div>
+  </section>
+</main>
+
+<footer>Все данные обрабатываются локально в браузере — ничего не отправляется на сервер.</footer>
+
+<!-- ============ Модалка редактирования ============ -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Редактирование записи <span id="modalIndex" class="muted"></span></h3>
+      <div class="spacer"></div>
+      <button id="modeToggle" class="ghost small-btn">JSON</button>
+      <button id="modalClose" class="close" title="Закрыть">×</button>
+    </div>
+    <div id="editBody" class="modal-body"></div>
+    <div class="modal-footer">
+      <button id="addFieldBtn" class="ghost">+ Поле</button>
+      <button id="deleteInModalBtn" class="ghost danger">Удалить запись</button>
+      <div class="spacer" style="flex:1"></div>
+      <button id="modalCancel" class="ghost">Отмена</button>
+      <button id="modalSave" class="primary">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  const state = {
+    fileName: '',
+    data: null,
+    arrayPath: [],
+    history: [],          // {action:'append'|'edit'|'delete', ...}
+    initialLength: 0,
+    currentPage: 0,
+    pageSize: 50,
+    editIndex: -1,
+    editDraft: null,
+    editMode: 'form',
+    jsonValid: true
+  };
+
+  /* ---------- утилиты ---------- */
+
+  function getArr() {
+    let o = state.data;
+    for (const k of state.arrayPath) o = o[k];
+    return o;
+  }
+
+  function deepClone(v) {
+    if (v === undefined) return undefined;
+    return JSON.parse(JSON.stringify(v));
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function findArrayPaths(obj, base = [], depth = 0, out = []) {
+    if (depth > 5 || obj === null || typeof obj !== 'object') return out;
+    if (Array.isArray(obj)) { out.push(base); return out; }
+    for (const k of Object.keys(obj)) {
+      if (Array.isArray(obj[k])) out.push([...base, k]);
+      else if (obj[k] && typeof obj[k] === 'object') findArrayPaths(obj[k], [...base, k], depth + 1, out);
+    }
+    return out;
+  }
+
+  function detectIndent(text) {
+    const m = text.match(/\n([ \t]+)[^\s]/);
+    if (!m) return '0';
+    return m[1].includes('\t') ? 'tab' : String(Math.min(m[1].length, 8));
+  }
+
+  function referenceKeys(arr) {
+    const counts = new Map();
+    for (const rec of arr.slice(0, 300)) {
+      if (!rec || typeof rec !== 'object' || Array.isArray(rec)) continue;
+      const key = Object.keys(rec).sort().join('\u0000');
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    let best = null, bestN = 0;
+    for (const [k, n] of counts) if (n > bestN) { best = k; bestN = n; }
+    return best ? best.split('\u0000') : null;
+  }
+
+  function detectIdField(arr) {
+    const preferred = ['id', '_id', 'uuid', 'guid', 'code', 'key'];
+    const first = arr.find(r => r && typeof r === 'object' && !Array.isArray(r));
+    if (!first) return '';
+    const byLower = new Map(Object.keys(first).map(k => [k.toLowerCase(), k]));
+    for (const p of preferred) if (byLower.has(p)) return byLower.get(p);
+    return '';
+  }
+
+  function showMessage(type, text) {
+    const el = $('message');
+    el.hidden = false;
+    el.className = 'message ' + type;
+    el.textContent = text;
+  }
+  function hideMessage() { $('message').hidden = true; }
+
+  function updateBadge() {
+    const b = $('fileBadge');
+    const dirty = state.history.length > 0;
+    b.textContent = state.fileName + (dirty ? ' · изменён' : '');
+    b.className = 'badge ' + (dirty ? 'dirty' : 'loaded');
+  }
+
+  function cellText(v) {
+    if (v === undefined) return '';
+    if (v === null) return 'null';
+    if (typeof v === 'string') return v.length > 80 ? v.slice(0, 80) + '…' : v;
+    if (typeof v === 'object') {
+      const s = JSON.stringify(v);
+      return s.length > 60 ? s.slice(0, 60) + '…' : s;
+    }
+    return String(v);
+  }
+
+  /* ---------- загрузка ---------- */
+
+  async function loadFile(file) {
+    const um = $('uploadMsg');
+    um.hidden = true;
+    $('fileBadge').textContent = 'чтение…';
+
+    try {
+      const raw = await file.text();
+      const text = raw.replace(/^\uFEFF/, '');
+
+      let data;
+      try { data = JSON.parse(text); }
+      catch (e) { throw new Error('Не удалось распарсить JSON: ' + e.message); }
+
+      const paths = findArrayPaths(data);
+      if (paths.length === 0) throw new Error('В файле не найден массив, который можно дополнить.');
+
+      state.fileName = file.name;
+      state.data = data;
+      state.history = [];
+      state.arrayPath = paths[0];
+      state.initialLength = getArr().length;
+      state.currentPage = 0;
+
+      const sel = $('arraySelect');
+      sel.innerHTML = '';
+      paths.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify(p);
+        opt.textContent = p.length ? p.join('.') : '(корень — массив)';
+        sel.appendChild(opt);
+      });
+      sel.value = JSON.stringify(paths[0]);
+      $('arrayPicker').hidden = (paths.length === 1 && paths[0].length === 0);
+
+      const ind = detectIndent(text);
+      const hasOpt = [...$('indentSel').options].some(o => o.value === ind);
+      $('indentSel').value = hasOpt ? ind : '2';
+
+      $('idFieldInput').value = detectIdField(getArr());
+
+      $('uploadSection').hidden = true;
+      $('workSection').hidden = false;
+      $('resetBtn').hidden = false;
+      $('bomChk').checked = raw.startsWith('\uFEFF');
+
+      updateBadge();
+      render();
+      hideMessage();
+
+      if (raw.length > 60 * 1024 * 1024) {
+        showMessage('warn', 'Файл большой (' + (raw.length / 1048576).toFixed(1) +
+          ' МБ). Операции могут занимать время.');
+      }
+    } catch (e) {
+      $('fileBadge').textContent = 'файл не загружен';
+      $('fileBadge').className = 'badge';
+      um.hidden = false;
+      um.className = 'message error';
+      um.textContent = e.message;
+    }
+  }
+
+  /* ---------- добавление ---------- */
+
+  function doAppend() {
+    hideMessage();
+    const arr = getArr();
+    const raw = $('recordInput').value.trim();
+    if (!raw) return showMessage('error', 'Введите JSON-запись в поле выше.');
+
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (e) { return showMessage('error', 'Некорректный JSON:\n' + e.message); }
+
+    const incoming = Array.isArray(parsed) ? parsed : [parsed];
+    if (incoming.length === 0) return showMessage('error', 'Массив записей пуст — нечего добавлять.');
+
+    const requiresObjects = arr.length > 0 &&
+      arr.every(x => x && typeof x === 'object' && !Array.isArray(x));
+    if (requiresObjects) {
+      for (let i = 0; i < incoming.length; i++) {
+        const r = incoming[i];
+        if (!r || typeof r !== 'object' || Array.isArray(r)) {
+          return showMessage('error',
+            'Запись #' + (i + 1) + ' должна быть JSON-объектом (в файле хранятся объекты).');
+        }
+      }
+    }
+
+    const warnings = [];
+
+    const idf = $('idFieldInput').value.trim();
+    if ($('dedupChk').checked && idf) {
+      const seen = new Set();
+      for (const r of arr) {
+        if (r && typeof r === 'object' && r[idf] !== undefined && r[idf] !== null) {
+          seen.add(JSON.stringify(r[idf]));
+        }
+      }
+      const dups = [];
+      incoming.forEach((r, i) => {
+        if (!r || typeof r !== 'object') return;
+        const v = r[idf];
+        if (v === undefined || v === null) return;
+        const k = JSON.stringify(v);
+        if (seen.has(k)) dups.push('#' + (i + 1) + ': ' + idf + ' = ' + k);
+        else seen.add(k);
+      });
+      if (dups.length) {
+        return showMessage('error', 'Найдены дубликаты по полю «' + idf + '»:\n' + dups.join('\n'));
+      }
+    }
+
+    const ref = referenceKeys(arr);
+    if (ref) {
+      const problems = [];
+      incoming.forEach((r, i) => {
+        if (!r || typeof r !== 'object') return;
+        const keys = Object.keys(r);
+        const missing = ref.filter(k => !keys.includes(k));
+        const extra = keys.filter(k => !ref.includes(k));
+        if (missing.length || extra.length) {
+          const parts = [];
+          if (missing.length) parts.push('нет: ' + missing.join(', '));
+          if (extra.length) parts.push('лишние: ' + extra.join(', '));
+          problems.push('#' + (i + 1) + ' — ' + parts.join('; '));
+        }
+      });
+      if (problems.length) {
+        const text = 'Структура отличается от записей в файле:\n' + problems.join('\n');
+        if ($('structChk').checked) {
+          return showMessage('error', text + '\n\nДобавление заблокировано (строгий режим).');
+        }
+        warnings.push(text);
+      }
+    }
+
+    arr.push(...incoming);
+    state.history.push({ action: 'append', count: incoming.length });
+    $('recordInput').value = '';
+    updateBadge();
+    render();
+
+    const base = 'Добавлено записей: ' + incoming.length + '. Всего в массиве: ' + arr.length + '.';
+    if (warnings.length) showMessage('warn', base + '\n\n' + warnings.join('\n\n'));
+    else showMessage('ok', base);
+  }
+
+  function undo() {
+    const last = state.history.pop();
+    if (!last) return;
+    const arr = getArr();
+    if (last.action === 'append') {
+      arr.splice(arr.length - last.count, last.count);
+    } else if (last.action === 'edit') {
+      arr[last.index] = last.before;
+    } else if (last.action === 'delete') {
+      arr.splice(last.index, 0, last.value);
+    }
+    updateBadge();
+    render();
+    const labels = { append: 'добавление', edit: 'редактирование', 'delete': 'удаление' };
+    showMessage('ok', 'Отменено: ' + (labels[last.action] || last.action) + '.');
+  }
+
+  function useTemplate() {
+    const arr = getArr();
+    const last = arr[arr.length - 1];
+    if (last === undefined) return showMessage('warn', 'Массив пуст — нет шаблона.');
+    $('recordInput').value = JSON.stringify(last, null, 2);
+    $('recordInput').focus();
+    showMessage('ok', 'Последняя запись скопирована как шаблон. Измените поля и нажмите «Добавить».');
+  }
+
+  /* ---------- таблица ---------- */
+
+  function computeColumns(arr, idField) {
+    const seen = new Set();
+    const order = [];
+    let hasNonObject = false;
+    if (idField) { seen.add(idField); order.push(idField); }
+    for (const rec of arr.slice(0, 300)) {
+      if (!rec || typeof rec !== 'object' || Array.isArray(rec)) { hasNonObject = true; continue; }
+      for (const k of Object.keys(rec)) {
+        if (!seen.has(k)) { seen.add(k); order.push(k); }
+      }
+      if (order.length >= 8) break;
+    }
+    return { cols: order.slice(0, 8), hasNonObject };
+  }
+
+  function renderTable() {
+    const wrap = $('recordsTable');
+    const arr = getArr();
+    const countEl = $('tableCount');
+    const pg = $('pagination');
+
+    if (arr.length === 0) {
+      wrap.innerHTML = '<div class="empty-state">Массив пуст — добавьте первую запись.</div>';
+      pg.innerHTML = '';
+      countEl.textContent = '';
+      return;
+    }
+
+    const filter = ($('filterInput').value || '').trim().toLowerCase();
+    let indices = arr.map((_, i) => i);
+    if (filter) {
+      indices = indices.filter(i => {
+        try { return JSON.stringify(arr[i]).toLowerCase().includes(filter); }
+        catch (_) { return false; }
+      });
+    }
+
+    const total = indices.length;
+    const pages = Math.max(1, Math.ceil(total / state.pageSize));
+    if (state.currentPage >= pages) state.currentPage = pages - 1;
+    if (state.currentPage < 0) state.currentPage = 0;
+    const start = state.currentPage * state.pageSize;
+    const pageIndices = indices.slice(start, start + state.pageSize);
+
+    const idField = $('idFieldInput').value.trim();
+    const { cols, hasNonObject } = computeColumns(arr, idField);
+
+    if (total === 0) {
+      wrap.innerHTML = '<div class="empty-state">Ничего не найдено по запросу.</div>';
+      pg.innerHTML = '';
+      countEl.textContent = arr.length + ' записей';
+      return;
+    }
+
+    let html = '<div class="table-wrap"><table><thead><tr>';
+    if (hasNonObject) html += '<th>значение</th>';
+    for (const c of cols) html += '<th>' + escapeHtml(c) + '</th>';
+    html += '<th style="width:1px"></th></tr></thead><tbody>';
+
+    for (const i of pageIndices) {
+      const rec = arr[i];
+      const isObj = rec && typeof rec === 'object' && !Array.isArray(rec);
+      html += '<tr data-idx="' + i + '">';
+      if (hasNonObject) {
+        html += '<td>' + escapeHtml(isObj ? '' : cellText(rec)) + '</td>';
+      }
+      for (const c of cols) {
+        const v = isObj ? rec[c] : undefined;
+        html += '<td>' + escapeHtml(cellText(v)) + '</td>';
+      }
+      html += '<td class="actions">'
+        + '<button class="ghost" data-edit="' + i + '" title="Редактировать">✎</button>'
+        + '<button class="ghost danger" data-delete="' + i + '" title="Удалить">×</button>'
+        + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+
+    wrap.querySelectorAll('[data-edit]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        openEditModal(Number(btn.dataset.edit));
+      });
+    });
+    wrap.querySelectorAll('[data-delete]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        deleteRecord(Number(btn.dataset.delete));
+      });
+    });
+    wrap.querySelectorAll('tr[data-idx]').forEach(tr => {
+      tr.addEventListener('dblclick', () => openEditModal(Number(tr.dataset.idx)));
+    });
+
+    countEl.textContent = (filter ? total + ' из ' + arr.length : arr.length) + ' записей';
+
+    if (pages <= 1) { pg.innerHTML = ''; return; }
+    pg.innerHTML = ''
+      + '<button class="ghost" data-pg="prev"' + (state.currentPage === 0 ? ' disabled' : '') + '>‹ Назад</button>'
+      + '<span>Стр. ' + (state.currentPage + 1) + ' из ' + pages + '</span>'
+      + '<button class="ghost" data-pg="next"' + (state.currentPage >= pages - 1 ? ' disabled' : '') + '>Вперёд ›</button>';
+    pg.querySelector('[data-pg="prev"]').addEventListener('click', () => { state.currentPage--; renderTable(); });
+    pg.querySelector('[data-pg="next"]').addEventListener('click', () => { state.currentPage++; renderTable(); });
+  }
+
+  /* ---------- удаление ---------- */
+
+  function deleteRecord(index) {
+    const arr = getArr();
+    if (index < 0 || index >= arr.length) return;
+    if (!confirm('Удалить запись #' + (index + 1) + '?')) return;
+    const value = arr[index];
+    arr.splice(index, 1);
+    state.history.push({ action: 'delete', index, value });
+    updateBadge();
+    render();
+    showMessage('ok', 'Запись #' + (index + 1) + ' удалена.');
+  }
+
+  /* ---------- модалка ---------- */
+
+  function canBeForm() {
+    const d = state.editDraft;
+    return d && typeof d === 'object' && !Array.isArray(d);
+  }
+
+  function openEditModal(index) {
+    if (index < 0 || index >= getArr().length) return;
+    state.editIndex = index;
+    state.editDraft = deepClone(getArr()[index]);
+    state.editMode = canBeForm() ? 'form' : 'json';
+    $('modalIndex').textContent = '#' + (index + 1);
+    renderEditBody();
+    updateModeToggle();
+    $('modal').hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    $('modal').hidden = true;
+    document.body.style.overflow = '';
+    state.editIndex = -1;
+    state.editDraft = null;
+  }
+
+  function updateModeToggle() {
+    const btn = $('modeToggle');
+    if (state.editMode === 'form') {
+      btn.textContent = 'JSON';
+      btn.disabled = false;
+    } else {
+      btn.textContent = 'Форма';
+      btn.disabled = !canBeForm();
+    }
+  }
+
+  function renderEditBody() {
+    const body = $('editBody');
+    body.innerHTML = '';
+
+    if (state.editMode === 'json') {
+      state.jsonValid = true;
+      const ta = document.createElement('textarea');
+      ta.className = 'json-editor';
+      ta.spellcheck = false;
+      ta.value = JSON.stringify(state.editDraft, null, 2);
+      ta.addEventListener('input', () => {
+        try {
+          state.editDraft = JSON.parse(ta.value);
+          state.jsonValid = true;
+          ta.classList.remove('invalid');
+        } catch (e) {
+          state.jsonValid = false;
+          ta.classList.add('invalid');
+        }
+        updateModeToggle();
+      });
+      body.appendChild(ta);
+
+      const hint = document.createElement('p');
+      hint.className = 'muted small';
+      hint.style.marginTop = '8px';
+      hint.textContent = 'Редактирование в формате JSON. Можно менять типы любых полей.';
+      body.appendChild(hint);
+      return;
+    }
+
+    if (!canBeForm()) {
+      state.editMode = 'json';
+      renderEditBody();
+      updateModeToggle();
+      return;
+    }
+
+    const keys = Object.keys(state.editDraft);
+    if (keys.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'muted';
+      p.textContent = 'Нет полей. Добавьте первое поле кнопкой «+ Поле».';
+      body.appendChild(p);
+      return;
+    }
+
+    for (const key of keys) {
+      body.appendChild(buildFieldRow(key, state.editDraft[key]));
+    }
+  }
+
+  function typeLabel(type) {
+    return {
+      string: 'строка',
+      text: 'текст',
+      number: 'число',
+      boolean: 'boolean',
+      null: 'null',
+      json: 'json'
+    }[type] || type;
+  }
+
+  function fieldTemplate(value) {
+    if (typeof value === 'boolean') {
+      return {
+        type: 'boolean',
+        html: '<select class="value-input" data-type="boolean">'
+          + '<option value="true"' + (value ? ' selected' : '') + '>true</option>'
+          + '<option value="false"' + (!value ? ' selected' : '') + '>false</option>'
+          + '</select>'
+      };
+    }
+    if (typeof value === 'number') {
+      return {
+        type: 'number',
+        html: '<input class="value-input" type="text" data-type="number" inputmode="decimal" value="'
+          + escapeHtml(String(value)) + '">'
+      };
+    }
+    if (typeof value === 'string') {
+      if (value.length > 60 || value.includes('\n')) {
+        return {
+          type: 'text',
+          html: '<textarea class="value-input" data-type="string">' + escapeHtml(value) + '</textarea>'
+        };
+      }
+      return {
+        type: 'string',
+        html: '<input class="value-input" type="text" data-type="string" value="'
+          + escapeHtml(value) + '">'
+      };
+    }
+    if (value === null) {
+      return {
+        type: 'null',
+        html: '<input class="value-input" type="text" data-type="null" placeholder="null — оставьте пустым">'
+      };
+    }
+    return {
+      type: 'json',
+      html: '<textarea class="value-input json-field" data-type="json" spellcheck="false">'
+        + escapeHtml(JSON.stringify(value, null, 2)) + '</textarea>'
+    };
+  }
+
+  function buildFieldRow(key, value) {
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    const tpl = fieldTemplate(value);
+
+    row.innerHTML = ''
+      + '<div class="field-header">'
+      +   '<input class="key-input" value="' + escapeHtml(key) + '" spellcheck="false">'
+      +   '<span class="type-badge">' + tpl.type + '</span>'
+      +   '<button class="btn-remove-field" type="button" title="Удалить поле">×</button>'
+      + '</div>'
+      + tpl.html;
+
+    row.querySelector('.btn-remove-field').addEventListener('click', () => row.remove());
+    return row;
+  }
+
+  function readForm() {
+    const result = {};
+    const rows = $('editBody').querySelectorAll('.field-row');
+    if (rows.length === 0) return result;
+    for (const row of rows) {
+      const key = row.querySelector('.key-input').value.trim();
+      if (!key) throw new Error('У одного из полей пустое имя.');
+      if (Object.prototype.hasOwnProperty.call(result, key)) {
+        throw new Error('Дублирующееся поле: "' + key + '".');
+      }
+      const input = row.querySelector('.value-input');
+      result[key] = parseFieldValue(input, key);
+    }
+    return result;
+  }
+
+  function parseFieldValue(input, key) {
+    const type = input.dataset.type;
+    const v = input.value;
+    if (type === 'boolean') return v === 'true';
+    if (type === 'number') {
+      if (v.trim() === '') throw new Error('Поле "' + key + '": пустое значение числа.');
+      const n = Number(v);
+      if (!isFinite(n)) throw new Error('Поле "' + key + '": не является числом.');
+      return n;
+    }
+    if (type === 'json') {
+      try { return JSON.parse(v); }
+      catch (e) { throw new Error('Поле "' + key + '": некорректный JSON — ' + e.message); }
+    }
+    if (type === 'null') {
+      if (v.trim() === '') return null;
+      try { return JSON.parse(v); } catch (_) { return v; }
+    }
+    return v;
+  }
+
+  function toggleMode() {
+    if (state.editMode === 'form') {
+      try {
+        state.editDraft = readForm();
+      } catch (e) {
+        alert('Исправьте ошибки в форме:\n' + e.message);
+        return;
+      }
+      state.editMode = 'json';
+    } else {
+      if (!state.jsonValid) {
+        alert('Некорректный JSON — исправьте, затем переключайтесь в режим формы.');
+        return;
+      }
+      if (!canBeForm()) {
+        alert('Режим формы доступен только для объектов.');
+        return;
+      }
+      state.editMode = 'form';
+    }
+    renderEditBody();
+    updateModeToggle();
+  }
+
+  function addField() {
+    const key = prompt('Имя нового поля:');
+    if (!key) return;
+    if (!/^[^.\s]+$/.test(key) && false) { /* разрешаем любые */ }
+
+    if (state.editMode === 'json') {
+      if (!canBeForm()) {
+        state.editDraft = {};
+      }
+      if (Object.prototype.hasOwnProperty.call(state.editDraft, key)) {
+        alert('Поле с таким именем уже существует.');
+        return;
+      }
+      state.editDraft[key] = '';
+      renderEditBody();
+      updateModeToggle();
+      return;
+    }
+
+    const rows = $('editBody').querySelectorAll('.field-row .key-input');
+    for (const ki of rows) {
+      if (ki.value.trim() === key) { alert('Поле с таким именем уже существует.'); return; }
+    }
+    const row = buildFieldRow(key, '');
+    $('editBody').appendChild(row);
+    const input = row.querySelector('.value-input');
+    if (input) input.focus();
+  }
+
+  function saveEdit() {
+    let newValue;
+    if (state.editMode === 'form') {
+      try { newValue = readForm(); }
+      catch (e) { alert('Ошибка: ' + e.message); return; }
+    } else {
+      if (!state.jsonValid) { alert('Некорректный JSON — сохранить нельзя.'); return; }
+      newValue = state.editDraft;
+    }
+    const idx = state.editIndex;
+    if (idx < 0) return;
+    const before = getArr()[idx];
+    getArr()[idx] = newValue;
+    state.history.push({ action: 'edit', index: idx, before });
+    closeModal();
+    updateBadge();
+    render();
+    showMessage('ok', 'Запись #' + (idx + 1) + ' обновлена.');
+  }
+
+  /* ---------- отрисовка ---------- */
+
+  function render() {
+    const arr = getArr();
+
+    $('statTotal').textContent = arr.length.toLocaleString('ru-RU');
+    $('statAdded').textContent = state.history.length.toLocaleString('ru-RU');
+
+    let size = 0;
+    try { size = new Blob([JSON.stringify(state.data)]).size; } catch (_) {}
+    $('statSize').textContent = size >= 1048576
+      ? (size / 1048576).toFixed(1) + ' МБ'
+      : (size / 1024).toFixed(1) + ' КБ';
+
+    $('downloadBtn').disabled = state.data === null;
+    $('undoBtn').disabled = state.history.length === 0;
+
+    const tail = arr.slice(-3);
+    $('preview').textContent = tail.length
+      ? tail.map(r => JSON.stringify(r, null, 2)).join('\n\n')
+      : 'Массив пуст';
+
+    renderTable();
+  }
+
+  /* ---------- скачивание ---------- */
+
+  function download() {
+    if (!state.data) return;
+    const indRaw = $('indentSel').value;
+    const indent = indRaw === 'tab' ? '\t' : Number(indRaw);
+
+    let text = JSON.stringify(state.data, null, indent);
+    if ($('bomChk').checked) text = '\uFEFF' + text;
+
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const base = (state.fileName || 'data').replace(/\.(json|txt)$/i, '');
+    a.href = url;
+    a.download = base + '_updated.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+    showMessage('ok', 'Файл сформирован и скачан. Можно продолжать работу — следующая выгрузка будет содержать всё вместе.');
+  }
+
+  /* ---------- сброс ---------- */
+
+  function reset() {
+    if (state.history.length && !confirm('Сбросить без скачивания? Все изменения будут потеряны.')) return;
+    state.data = null;
+    state.history = [];
+    state.fileName = '';
+    state.arrayPath = [];
+    state.initialLength = 0;
+    state.currentPage = 0;
+    $('recordInput').value = '';
+    $('filterInput').value = '';
+    $('workSection').hidden = true;
+    $('uploadSection').hidden = false;
+    $('resetBtn').hidden = true;
+    $('fileInput').value = '';
+    $('fileBadge').textContent = 'файл не загружен';
+    $('fileBadge').className = 'badge';
+    $('uploadMsg').hidden = true;
+    $('recordsTable').innerHTML = '';
+    $('pagination').innerHTML = '';
+    hideMessage();
+  }
+
+  /* ---------- инициализация ---------- */
+
+  function init() {
+    const fileInput = $('fileInput');
+    const dropZone = $('dropZone');
+
+    $('browseBtn').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) loadFile(fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    ['dragenter', 'dragover'].forEach(ev => dropZone.addEventListener(ev, e => {
+      e.preventDefault(); dropZone.classList.add('over');
+    }));
+    ['dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, e => {
+      e.preventDefault(); dropZone.classList.remove('over');
+    }));
+    dropZone.addEventListener('drop', e => {
+      const f = e.dataTransfer.files[0];
+      if (f) loadFile(f);
+    });
+
+    $('appendBtn').addEventListener('click', doAppend);
+    $('undoBtn').addEventListener('click', undo);
+    $('downloadBtn').addEventListener('click', download);
+    $('resetBtn').addEventListener('click', reset);
+    $('templateBtn').addEventListener('click', useTemplate);
+    $('clearInputBtn').addEventListener('click', () => { $('recordInput').value = ''; hideMessage(); });
+
+    $('arraySelect').addEventListener('change', e => {
+      state.arrayPath = JSON.parse(e.target.value);
+      state.history = [];
+      state.initialLength = getArr().length;
+      state.currentPage = 0;
+      $('idFieldInput').value = detectIdField(getArr());
+      updateBadge();
+      render();
+      hideMessage();
+    });
+
+    $('recordInput').addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); doAppend(); }
+    });
+
+    // таблица
+    let filterTimer;
+    $('filterInput').addEventListener('input', () => {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(() => { state.currentPage = 0; renderTable(); }, 180);
+    });
+    $('pageSizeSel').addEventListener('change', e => {
+      state.pageSize = Number(e.target.value);
+      state.currentPage = 0;
+      renderTable();
+    });
+
+    // модалка
+    $('modalClose').addEventListener('click', closeModal);
+    $('modalCancel').addEventListener('click', closeModal);
+    $('modalSave').addEventListener('click', saveEdit);
+    $('modeToggle').addEventListener('click', toggleMode);
+    $('addFieldBtn').addEventListener('click', addField);
+    $('deleteInModalBtn').addEventListener('click', () => {
+      const idx = state.editIndex;
+      closeModal();
+      if (idx >= 0) deleteRecord(idx);
+    });
+    $('modal').addEventListener('click', e => {
+      if (e.target === $('modal')) closeModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !$('modal').hidden) closeModal();
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+</body>
+</html>
